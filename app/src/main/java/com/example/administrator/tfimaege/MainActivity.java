@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -24,6 +25,12 @@ import android.view.Surface;
 import android.view.SurfaceView;
 import android.view.TextureView;
 import android.widget.ImageView;
+import android.widget.TextView;
+
+import com.example.administrator.tfimaege.TensorFlow.Classifier;
+import com.example.administrator.tfimaege.TensorFlow.TensorFlowImageClassifier;
+
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,6 +40,7 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity{
 
+    private TextView result;
     private TextureView tv;
     private SurfaceView sv;
     private ImageView iv;
@@ -45,11 +53,23 @@ public class MainActivity extends AppCompatActivity{
     private CameraCaptureSession mPreviewSession; //相机捕获会话，
     private CaptureRequest.Builder mCaptureRequestBuilder;
     private CaptureRequest mCaptureRequest;//捕获请求，定义输出缓冲区以及显示界面(TextureView或SurfaceView)
+
+    private static final int INPUT_SIZE = 224;
+    private static final int IMAGE_MEAN = 117;
+    private static final float IMAGE_STD = 1;
+    private static final String INPUT_NAME = "input";
+    private static final String OUTPUT_NAME = "output";
+    private static final String MODEL_FILE = "file:///android_asset/model/tensorflow_inception_graph.pb";
+    private static final String LABEL_FILE = "file:///android_asset/model/imagenet_comp_graph_label_strings.txt";
+
+    private Classifier classifier;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        result = findViewById(R.id.msg);
         iv = findViewById(R.id.iv);
         tv = findViewById(R.id.tv);
         tv.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
@@ -231,9 +251,33 @@ public class MainActivity extends AppCompatActivity{
             //new Thread(new save()).start();
             Bitmap bitmap = tv.getBitmap();
             iv.setImageBitmap(bitmap);
+
+            Bitmap croppedBitmap = null;
+            try {
+                croppedBitmap = getScaleBitmap(bitmap, INPUT_SIZE);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            classifier = TensorFlowImageClassifier.create(MainActivity.this.getAssets(),
+                    MODEL_FILE, LABEL_FILE, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD, INPUT_NAME, OUTPUT_NAME);
+
+            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
+            result.setText(String.format("results: %s", results));
+
+
             return true;
         }
         return super.onKeyDown(keyCode, event);
     }
 
+    private static Bitmap getScaleBitmap(Bitmap bitmap, int size) throws IOException {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        float scaleWidth = ((float) size) / width;
+        float scaleHeight = ((float) size) / height;
+        Matrix matrix = new Matrix();
+        matrix.postScale(scaleWidth, scaleHeight);
+        return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true);
+    }
 }
