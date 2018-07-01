@@ -29,6 +29,7 @@ import android.widget.TextView;
 
 import com.example.administrator.tfimaege.TensorFlow.Classifier;
 import com.example.administrator.tfimaege.TensorFlow.TensorFlowImageClassifier;
+import com.example.administrator.tfimaege.utils.BitmapUtils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -38,40 +39,42 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity{
+public class MainActivity extends AppCompatActivity {
+
+    private static final int INPUT_SIZE = 224;
 
     private TextView result;
     private TextureView tv;
     private SurfaceView sv;
     private ImageView iv;
-    private int width,height;
+    private int width, height;
     private String mCameraId = "0";
     private ImageReader imageReader;
     private Size previewSize;
-    private int RESULT_CODE_CAMERA=1;
+    private int RESULT_CODE_CAMERA = 1;
     private CameraDevice cameraDevice;
     private CameraCaptureSession mPreviewSession; //相机捕获会话，
     private CaptureRequest.Builder mCaptureRequestBuilder;
     private CaptureRequest mCaptureRequest;//捕获请求，定义输出缓冲区以及显示界面(TextureView或SurfaceView)
 
-    private static final int INPUT_SIZE = 224;
-    private static final int IMAGE_MEAN = 117;
-    private static final float IMAGE_STD = 1;
-    private static final String INPUT_NAME = "input";
-    private static final String OUTPUT_NAME = "output";
-    private static final String MODEL_FILE = "file:///android_asset/model/tensorflow_inception_graph.pb";
-    private static final String LABEL_FILE = "file:///android_asset/model/imagenet_comp_graph_label_strings.txt";
-
-    private Classifier classifier;
+    private Presenter mPresenter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        initView();
+        mPresenter = new Presenter(this);
+    }
 
-        result = findViewById(R.id.msg);
-        iv = findViewById(R.id.iv);
-        tv = findViewById(R.id.tv);
+
+    /**
+     * 初始化布局
+     */
+    private void initView() {
+        result = findViewById(R.id.tv_msg);
+        iv = findViewById(R.id.iv_capture);
+        tv = findViewById(R.id.ttv_preview);
         tv.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             @Override
             public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
@@ -95,9 +98,11 @@ public class MainActivity extends AppCompatActivity{
 
             }
         });
-
     }
 
+    /**
+     * 打开相机
+     */
     private void openCamera() {
         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         setCameraCharacteristics(manager);
@@ -105,97 +110,92 @@ public class MainActivity extends AppCompatActivity{
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
 
                 String[] perms = {"android.permission.CAMERA"};
-                ActivityCompat.requestPermissions(MainActivity.this,perms, RESULT_CODE_CAMERA);
+                ActivityCompat.requestPermissions(MainActivity.this, perms, RESULT_CODE_CAMERA);
 
-            }else {
+            } else {
                 manager.openCamera(mCameraId, stateCallback, null);
             }
 
-        } catch (CameraAccessException e){
+        } catch (CameraAccessException e) {
             e.printStackTrace();
         }
 
     }
 
+    /**
+     * 初始化相机
+     *
+     * @param manager
+     */
     private void setCameraCharacteristics(CameraManager manager) {
-        try
-        {
+        try {
             // 获取指定摄像头的特性
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraId);
             // 获取摄像头支持的配置属性
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             // 获取摄像头支持的最大尺寸
-            Size largest = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)),new CompareSizesByArea());
+            Size largest = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)), new CompareSizesByArea());
             // 创建一个ImageReader对象，用于获取摄像头的图像数据
             imageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(), ImageFormat.JPEG, 2);
             // 获取最佳的预览尺寸
             previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class), width, height, largest);
-        }
-        catch (CameraAccessException e)
-        {
+        } catch (CameraAccessException e) {
             e.printStackTrace();
-        }
-        catch (NullPointerException e)
-        {
+        } catch (NullPointerException e) {
         }
     }
 
-    // 为Size定义一个比较器Comparator
-    static class CompareSizesByArea implements Comparator<Size>
-    {
+    /**
+     * 为Size定义一个比较器Comparator
+     */
+    static class CompareSizesByArea implements Comparator<Size> {
         @Override
-        public int compare(Size lhs, Size rhs)
-        {
+        public int compare(Size lhs, Size rhs) {
             // 强转为long保证不会发生溢出
             return Long.signum((long) lhs.getWidth() * lhs.getHeight() - (long) rhs.getWidth() * rhs.getHeight());
         }
     }
 
-    private static Size chooseOptimalSize(Size[] choices, int width, int height, Size aspectRatio)
-    {
+    private static Size chooseOptimalSize(Size[] choices, int width, int height, Size aspectRatio) {
         // 收集摄像头支持的大过预览Surface的分辨率
         List<Size> bigEnough = new ArrayList<>();
         int w = aspectRatio.getWidth();
         int h = aspectRatio.getHeight();
-        for (Size option : choices)
-        {
+        for (Size option : choices) {
             if (option.getHeight() == option.getWidth() * h / w &&
-                    option.getWidth() >= width && option.getHeight() >= height)
-            {
+                    option.getWidth() >= width && option.getHeight() >= height) {
                 bigEnough.add(option);
             }
         }
         // 如果找到多个预览尺寸，获取其中面积最小的
-        if (bigEnough.size() > 0)
-        {
+        if (bigEnough.size() > 0) {
             return Collections.min(bigEnough, new CompareSizesByArea());
-        }
-        else
-        {
+        } else {
             //没有合适的预览尺寸
             return choices[0];
         }
     }
 
-    /**摄像头状态的监听*/
-    private CameraDevice.StateCallback stateCallback = new CameraDevice. StateCallback()
-    {
+
+    /**
+     * 摄像头状态的监听
+     */
+    private CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
-        public void onOpened(CameraDevice cameraDevice){
+        public void onOpened(CameraDevice cameraDevice) {
             MainActivity.this.cameraDevice = cameraDevice;
             takePreview();
         }
 
         @Override
-        public void onDisconnected(CameraDevice cameraDevice)
-        {
+        public void onDisconnected(CameraDevice cameraDevice) {
             MainActivity.this.cameraDevice.close();
             MainActivity.this.cameraDevice = null;
 
         }
+
         @Override
-        public void onError(CameraDevice cameraDevice, int error)
-        {
+        public void onError(CameraDevice cameraDevice, int error) {
             cameraDevice.close();
         }
     };
@@ -217,7 +217,7 @@ public class MainActivity extends AppCompatActivity{
             //设置Surface作为预览数据的显示界面
             mCaptureRequestBuilder.addTarget(mSurface);
             //创建相机捕获会话，第一个参数是捕获数据的输出Surface列表，第二个参数是CameraCaptureSession的状态回调接口，当它创建好后会回调onConfigured方法，第三个参数用来确定Callback在哪个线程执行，为null的话就在当前线程执行
-            cameraDevice.createCaptureSession(Arrays.asList(mSurface,imageReader.getSurface()),new CameraCaptureSession.StateCallback() {
+            cameraDevice.createCaptureSession(Arrays.asList(mSurface, imageReader.getSurface()), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(CameraCaptureSession session) {
                     try {
@@ -245,7 +245,7 @@ public class MainActivity extends AppCompatActivity{
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN||keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
 
 
             //new Thread(new save()).start();
@@ -254,30 +254,21 @@ public class MainActivity extends AppCompatActivity{
 
             Bitmap croppedBitmap = null;
             try {
-                croppedBitmap = getScaleBitmap(bitmap, INPUT_SIZE);
+                croppedBitmap = BitmapUtils.getScaleBitmap(bitmap, INPUT_SIZE);
+
+                mPresenter.detectImage(croppedBitmap);
+
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
-            classifier = TensorFlowImageClassifier.create(MainActivity.this.getAssets(),
-                    MODEL_FILE, LABEL_FILE, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD, INPUT_NAME, OUTPUT_NAME);
-
-            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
-            result.setText(String.format("results: %s", results));
-
 
             return true;
         }
         return super.onKeyDown(keyCode, event);
     }
 
-    private static Bitmap getScaleBitmap(Bitmap bitmap, int size) throws IOException {
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        float scaleWidth = ((float) size) / width;
-        float scaleHeight = ((float) size) / height;
-        Matrix matrix = new Matrix();
-        matrix.postScale(scaleWidth, scaleHeight);
-        return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true);
+    public void showResult(String text) {
+        result.setText(text);
     }
+
 }
