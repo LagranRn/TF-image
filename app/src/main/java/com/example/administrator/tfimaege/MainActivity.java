@@ -16,9 +16,12 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.util.Size;
 import android.view.KeyEvent;
 import android.view.Surface;
@@ -39,9 +42,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import static android.media.ImageReader.*;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final int INPUT_SIZE = 224;
+    private static final String TAG = "MainActivity";
 
     private TextView result;
     private TextureView tv;
@@ -59,14 +65,15 @@ public class MainActivity extends AppCompatActivity {
 
     private Presenter mPresenter;
 
+    private int count = 0;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        initData();
         initView();
-        mPresenter = new Presenter(this);
     }
-
 
     /**
      * 初始化布局
@@ -95,9 +102,29 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+                count++;
+                if (count == 20) {
+                Log.d(TAG, "onSurfaceTextureUpdated: ");
+                Bitmap bitmap = tv.getBitmap();
+                iv.setImageBitmap(bitmap);
 
+                Bitmap croppedBitmap = null;
+                try {
+                    croppedBitmap = BitmapUtils.getScaleBitmap(bitmap, INPUT_SIZE);
+                    mPresenter.detectImage(croppedBitmap);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                count = 0;
             }
+        }
         });
+
+    }
+
+    private void initData() {
+        mPresenter = new Presenter(this);
     }
 
     /**
@@ -136,7 +163,8 @@ public class MainActivity extends AppCompatActivity {
             // 获取摄像头支持的最大尺寸
             Size largest = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)), new CompareSizesByArea());
             // 创建一个ImageReader对象，用于获取摄像头的图像数据
-            imageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(), ImageFormat.JPEG, 2);
+            imageReader = newInstance(largest.getWidth(), largest.getHeight(), ImageFormat.JPEG, 2);
+
             // 获取最佳的预览尺寸
             previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class), width, height, largest);
         } catch (CameraAccessException e) {
@@ -144,6 +172,7 @@ public class MainActivity extends AppCompatActivity {
         } catch (NullPointerException e) {
         }
     }
+
 
     /**
      * 为Size定义一个比较器Comparator
