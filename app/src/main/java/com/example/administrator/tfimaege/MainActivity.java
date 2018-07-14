@@ -41,17 +41,19 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import static android.media.ImageReader.*;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements IView {
 
     private static final int INPUT_SIZE = 224;
     private static final String TAG = "MainActivity";
 
     private TextView result;
     private TextureView tv;
-    private SurfaceView sv;
     private ImageView iv;
     private int width, height;
     private String mCameraId = "0";
@@ -64,6 +66,8 @@ public class MainActivity extends AppCompatActivity {
     private CaptureRequest mCaptureRequest;//捕获请求，定义输出缓冲区以及显示界面(TextureView或SurfaceView)
 
     private Presenter mPresenter;
+
+    private ExecutorService mPoolExecutor;
 
     private int count = 0;
 
@@ -104,27 +108,28 @@ public class MainActivity extends AppCompatActivity {
             public void onSurfaceTextureUpdated(SurfaceTexture surface) {
                 count++;
                 if (count == 20) {
-                Log.d(TAG, "onSurfaceTextureUpdated: ");
-                Bitmap bitmap = tv.getBitmap();
-                iv.setImageBitmap(bitmap);
-
-                Bitmap croppedBitmap = null;
-                try {
-                    croppedBitmap = BitmapUtils.getScaleBitmap(bitmap, INPUT_SIZE);
-                    mPresenter.detectImage(croppedBitmap);
-
-                } catch (IOException e) {
-                    e.printStackTrace();
+                    mPoolExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            Bitmap croppedBitmap = null;
+                            try {
+                                croppedBitmap = BitmapUtils.getScaleBitmap(tv.getBitmap(), INPUT_SIZE);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            mPresenter.detectImage(croppedBitmap);
+                        }
+                    });
+                    count = 0;
                 }
-                count = 0;
             }
-        }
         });
 
     }
 
     private void initData() {
         mPresenter = new Presenter(this);
+        mPoolExecutor = Executors.newCachedThreadPool();
     }
 
     /**
@@ -273,11 +278,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
 
-
-            //new Thread(new save()).start();
             Bitmap bitmap = tv.getBitmap();
             iv.setImageBitmap(bitmap);
 
@@ -296,8 +305,8 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
+    @Override
     public void showResult(String text) {
         result.setText(text);
     }
-
 }

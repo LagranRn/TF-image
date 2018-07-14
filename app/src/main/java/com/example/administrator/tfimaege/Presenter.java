@@ -1,11 +1,13 @@
 package com.example.administrator.tfimaege;
 
+import android.app.Activity;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.util.Log;
 
 import com.example.administrator.tfimaege.TensorFlow.Classifier;
 import com.example.administrator.tfimaege.TensorFlow.TensorFlowImageClassifier;
+import com.example.administrator.tfimaege.base.BaseApp;
 
 import java.util.List;
 
@@ -23,19 +25,20 @@ public class Presenter {
     private static final String MODEL_FILE = "file:///android_asset/model/tensorflow_inception_graph.pb";
     private static final String LABEL_FILE = "file:///android_asset/model/imagenet_comp_graph_label_strings.txt";
 
-    private MainActivity mActivity;
+    private IView mActivity;
     private Classifier classifier;
 
 
-    public Presenter(MainActivity activity) {
+    public Presenter(IView activity) {
         mActivity = activity;
-        classifier = TensorFlowImageClassifier.create(mActivity.getAssets(),
+        classifier = TensorFlowImageClassifier.create(BaseApp.getContext().getAssets(),
                 MODEL_FILE, LABEL_FILE, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD, INPUT_NAME, OUTPUT_NAME);
 
     }
 
     public void detectImage(final Bitmap croppedBitmap) {
-        new detectImageTask().execute(croppedBitmap);
+        if (croppedBitmap != null)
+            new detectImageTask().execute(croppedBitmap);
     }
 
     class detectImageTask extends AsyncTask<Bitmap, Void, String> {
@@ -48,7 +51,6 @@ public class Presenter {
             for (Recognition each : results) {
                 result += " " + each;
             }
-            Log.d(TAG, "detectImage: " + result);
             return result;
         }
 
