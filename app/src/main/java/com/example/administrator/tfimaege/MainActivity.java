@@ -18,6 +18,7 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -29,6 +30,7 @@ import android.view.SurfaceView;
 import android.view.TextureView;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.example.administrator.tfimaege.TensorFlow.Classifier;
 import com.example.administrator.tfimaege.TensorFlow.TensorFlowImageClassifier;
@@ -48,7 +50,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import static android.media.ImageReader.*;
 
 public class MainActivity extends AppCompatActivity implements IView {
-
+    private int refuseTimes = 0;
     private static final int INPUT_SIZE = 224;
     private static final String TAG = "MainActivity";
 
@@ -59,7 +61,7 @@ public class MainActivity extends AppCompatActivity implements IView {
     private String mCameraId = "0";
     private ImageReader imageReader;
     private Size previewSize;
-    private int RESULT_CODE_CAMERA = 1;
+    private static final  int RESULT_CODE_CAMERA = 1;
     private CameraDevice cameraDevice;
     private CameraCaptureSession mPreviewSession; //相机捕获会话，
     private CaptureRequest.Builder mCaptureRequestBuilder;
@@ -70,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements IView {
     private ExecutorService mPoolExecutor;
 
     private int count = 0;
+    CameraManager manager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -136,13 +139,14 @@ public class MainActivity extends AppCompatActivity implements IView {
      * 打开相机
      */
     private void openCamera() {
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         setCameraCharacteristics(manager);
         try {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
 
                 String[] perms = {"android.permission.CAMERA"};
                 ActivityCompat.requestPermissions(MainActivity.this, perms, RESULT_CODE_CAMERA);
+
 
             } else {
                 manager.openCamera(mCameraId, stateCallback, null);
@@ -152,6 +156,40 @@ public class MainActivity extends AppCompatActivity implements IView {
             e.printStackTrace();
         }
 
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode){
+            case RESULT_CODE_CAMERA:
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "onRequestPermissionsResult: 已经获取权限！");
+                    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+
+                        String[] perms = {"android.permission.CAMERA"};
+                        ActivityCompat.requestPermissions(MainActivity.this, perms, RESULT_CODE_CAMERA);
+
+                    } else {
+                        try {
+                            manager.openCamera(mCameraId, stateCallback, null);
+                        } catch (CameraAccessException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                } else {
+                    refuseTimes ++;
+                    if (refuseTimes>1){
+                        finish();
+                    }
+                    String[] perms = {"android.permission.CAMERA"};
+                    Log.d(TAG, "onRequestPermissionsResult: 拒绝权限授予！");
+                    Toast.makeText(this, "该程序无相机权限无法运行！\n再次拒绝将退出程序！", Toast.LENGTH_LONG).show();
+                    ActivityCompat.requestPermissions(MainActivity.this, perms, RESULT_CODE_CAMERA);
+                }
+                return;
+        }
     }
 
     /**
